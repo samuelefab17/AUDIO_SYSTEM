@@ -1,6 +1,11 @@
 #include "Arduino.h"
 #include <math.h>
+#include <U8g2lib.h>
+#include <SPI.h>
+#include <Wire.h>
 
+//#define SERIAL_BAUD 9600
+#define SERIAL_BAUD 115200
 
 // pin di ingresso audio 
 #define AUDIO_IN_PIN 36
@@ -16,6 +21,10 @@
 
 // pin di ingresso del potenziometro 
 #define POT_PIN 34
+#define BUTTON1_PIN 18
+#define BUTTON2_PIN 19
+#define BUTTON3_PIN 23
+#define BUTTON4_PIN 33
 
 // pin di uscita per il controllo del circuito di sintonia 
 #define TUNING_PIN 26
@@ -41,11 +50,32 @@ float bassFilterHistory[2] = {0, 0};
 float midFilterHistory[2] = {0, 0};
 float trebleFilterHistory[2] = {0, 0};
 
+int letpot;
+bool letbut1;
+bool letbut2;
+bool letbut3;
+bool letbut4;
+
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+
 void setup() 
 {
-  Serial.begin(115200); // comunicazione seriale
+  Serial.begin(SERIAL_BAUD); // comunicazione seriale
   dacWrite(AUDIO_OUT_PIN, 0); //uscita DAC
+
   pinMode(TUNING_PIN, OUTPUT); //pin di controllo della sintonia
+
+  pinMode(BUTTON1_PIN, INPUT_PULLUP);
+  pinMode(BUTTON2_PIN, INPUT_PULLUP);
+  pinMode(BUTTON3_PIN, INPUT_PULLUP);
+  pinMode(BUTTON4_PIN, INPUT_PULLUP);
+
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.setFontRefHeightExtendedText();
+  u8g2.setDrawColor(1);
+  u8g2.setFontPosTop();
+  u8g2.setFontDirection(0);
+  u8g2.begin();
 
   // task audio sul core 0
   xTaskCreatePinnedToCore(audioTask, "AudioTask", 10000, NULL, 1, NULL, 0); 
@@ -56,52 +86,6 @@ void setup()
 
 
 void loop() {}
-
-
-void audioTask(void * parameter) 
-{
-  for (;;) 
-  { 
-    for (int i = 0; i < BUFFER_SIZE; i++) 
-    { 
-      audioBuffer[i] = analogRead(AUDIO_IN_PIN); 
-
-      float bassFiltered = applyIIRFilter(audioBuffer[i], bassFilterCoeffs, bassFilterHistory);
-      float midFiltered = applyIIRFilter(audioBuffer[i], midFilterCoeffs, midFilterHistory);
-      float trebleFiltered = applyIIRFilter(audioBuffer[i], trebleFilterCoeffs, trebleFilterHistory);
-
-      if (equalizerEnabled) 
-      {
-        audioBuffer[i] = (bassFiltered * bassFactor) + (midFiltered * midFactor) + (trebleFiltered * trebleFactor);
-      }
-
-      audioBuffer[i] = constrain(audioBuffer[i], 0, 255); // limita il segnale all'intervallo del DAC
-      dacWrite(AUDIO_OUT_PIN, audioBuffer[i]); // invia il campione all'uscita DAC
-      delayMicroseconds(1000000 / SAMPLE_RATE); // attende per mantenere la frequenza di campionamento
-    }
-    if (Serial.available() > 0) 
-    {
-      char command = Serial.read();
-      if (command == 'e') 
-      {
-        equalizerEnabled = !equalizerEnabled; // inverte lo stato dell'equalizzatore
-        Serial.print("Equalizzatore: ");
-        Serial.println(equalizerEnabled ? "Attivo" : "Disattivo");
-      }
-    }
-  }
-}
-
-void tuningTask(void * parameter) 
-{
-  for (;;) 
-  { 
-    int potValue = analogRead(POT_PIN); // legge il valore del potenziometro
-    int tuningValue = map(potValue, 0, 1023, 0, 255); // mappa il valore al range di controllo
-    analogWrite(TUNING_PIN, tuningValue); // invia il valore al circuito di sintonia
-    delay(10);
-  }
-}
 
 float applyIIRFilter(float input, float coeffs[], float history[]) 
 {
