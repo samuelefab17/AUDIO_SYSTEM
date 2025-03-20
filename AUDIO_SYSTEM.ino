@@ -1,7 +1,6 @@
 #include "Arduino.h"
 #include <math.h>
 
-// --- Definizioni e variabili globali ---
 
 // Pin di ingresso audio (segnale dal circuito di sintonia)
 #define AUDIO_IN_PIN 36
